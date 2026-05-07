@@ -1,50 +1,43 @@
-name: Check PNU Schedule Changes # Назва вашого workflow
+name: Check PNU Schedule Changes
 
 on:
-  workflow_dispatch: # Дозволяє запускати вручну
+  workflow_dispatch:
 
-  push: # Запускати при push у гілку main
+  push:
     branches:
-      - main # Важливо: дефіс і відступ для елемента списку
+      - main
 
-  schedule: # Запускати за розкладом
-    # Розклади залишаються як були...
+  schedule:
     - cron: '0 */3 * * *'
 
 jobs:
   scrape-and-notify:
-    runs-on: ubuntu-latest # Використовуємо останню версію Ubuntu
+    runs-on: ubuntu-latest
 
     permissions:
-      contents: write # Надає дозвіл на запис у поточний репозиторій (для коміту)
+      contents: write
 
     steps:
-      - name: Checkout repository (pnu-schedule-monitor) # Крок 1: Завантажуємо код pnu-schedule-monitor
+      - name: Checkout repository (pnu-schedule-monitor)
         uses: actions/checkout@v4
-        # Ми не вказуємо `path` тут, тому він буде в корені робочої області
 
-      - name: Set up Python # Крок 2: Встановлюємо Python
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
-      - name: Install dependencies # Крок 3: Встановлюємо потрібні бібліотеки
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          # Примітка: Chrome, ймовірно, не потрібен, якщо скрипт не використовує Selenium/Puppeteer
-          # sudo apt-get update
-          # sudo apt-get install -y google-chrome-stable
 
-      - name: Run scraper script and capture output # Крок 4: Запускаємо ваш головний скрипт
+      - name: Run scraper script and capture output
         id: run_script
         run: |
           echo "Running main-scraper.py..."
-          # Припускаємо, що main-scraper.py генерує schedule_data.js
           python main-scraper.py | tee run_output.log
           echo "Script finished."
-          # Перевірка, чи згенерувався файл schedule_data.js (БЕЗ 's')
-          if [ ! -f schedule_data.js ]; then # <-- Правильно: schedule_data.js
+          if [ ! -f schedule_data.js ]; then
              echo "::error file=main-scraper.py::File schedule_data.js was not generated!"
              exit 1
           fi
@@ -59,7 +52,7 @@ jobs:
           fi
         shell: bash
 
-      - name: Extract change summary # Крок 5: Витягуємо опис змін для емейлу (якщо вони є)
+      - name: Extract change summary
         id: extract_summary
         if: steps.run_script.outputs.changes_detected == 'true'
         run: |
@@ -69,24 +62,19 @@ jobs:
           echo "$SUMMARY" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
           echo "Change summary extracted."
-          echo "--- Full Log ---"
-          cat run_output.log
-          echo "--- End Log ---"
         shell: bash
 
-      # --- Крок 6: Коміт у pnu-schedule-monitor (використовуючи Action) ---
       - name: Commit and push schedule_data.js to pnu-schedule-monitor
         if: steps.run_script.outputs.changes_detected == 'true'
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "Автоматичне оновлення розкладу (pnu-schedule-monitor)"
-          file_pattern: schedule_data.js # <-- ВИПРАВЛЕНО: БЕЗ 's'
+          file_pattern: schedule_data.js
           commit_user_name: GitHub Actions Bot
           commit_user_email: actions@github.com
           commit_author: GitHub Actions Bot <actions@github.com>
-          # Ця дія комітить оновлений schedule_data.js у pnu-schedule-monitor
 
-      # === НОВІ КРОКИ ДЛЯ СИНХРОНІЗАЦІЇ З student-pnu-web.github.io ===
+      # === СИНХРОНІЗАЦІЯ З student-pnu-web.github.io ===
 
       - name: Checkout student-pnu-web.github.io repo
         if: steps.run_script.outputs.changes_detected == 'true'
@@ -94,14 +82,13 @@ jobs:
         with:
           repository: IvanDutsak/student-pnu-web.github.io
           path: repo-b
-          token: ${{ secrets.REPO_B_PAT }} # Потрібен секрет з PAT
+          token: ${{ secrets.REPO_B_PAT }}
 
       - name: Copy schedule_data.js to repo-b
         if: steps.run_script.outputs.changes_detected == 'true'
         run: |
-          echo "Copying schedule_data.js from workspace root to repo-b folder..."
-          # Копіюємо файл БЕЗ 's'
-          cp ./schedule_data.js ./repo-b/schedule_data.js # <-- Правильно: обидва schedule_data.js
+          echo "Copying schedule_data.js to repo-b..."
+          cp ./schedule_data.js ./repo-b/schedule_data.js
           echo "Copy complete."
         shell: bash
 
@@ -111,29 +98,23 @@ jobs:
           cd repo-b
           git config user.name 'GitHub Actions Bot'
           git config user.email 'actions@github.com'
-          echo "Adding schedule_data.js to git index in repo-b..."
-          # Додаємо файл БЕЗ 's'
-          git add schedule_data.js # <-- Правильно: schedule_data.js
-          echo "Checking for actual changes to commit in repo-b..."
+          git add schedule_data.js
           if git diff --staged --quiet; then
-            echo "No actual changes detected in schedule_data.js for student-pnu-web.github.io. Skipping commit."
+            echo "No actual changes in schedule_data.js. Skipping commit."
           else
-            echo "Changes detected in repo-b. Committing..."
-            # Повідомлення коміту теж БЕЗ 's'
-            git commit -m "Автоматичне оновлення schedule_data.js [skip ci]" # <-- Правильно: schedule_data.js
-            echo "Pushing changes to student-pnu-web.github.io..."
+            echo "Changes detected. Committing..."
+            git commit -m "Автоматичне оновлення schedule_data.js [skip ci]"
             git push origin main
             echo "Push to student-pnu-web.github.io complete."
           fi
         shell: bash
 
-      # === КІНЕЦЬ НОВИХ КРОКІВ СИНХРОНІЗАЦІЇ ===
+      # === EMAIL СПОВІЩЕННЯ ===
 
-      - name: Send notification email # Крок 10: Відправляємо емейл (якщо зміни знайдено)
-        if: env.CHANGES_FOUND == 'true' # Або: steps.run_script.outputs.changes_detected == 'true'
+      - name: Send notification email
+        if: env.CHANGES_FOUND == 'true'
         uses: dawidd6/action-send-mail@v3
         with:
-          # Параметри залишаються твоїми
           server_address: smtp.gmail.com
           server_port: 465
           secure: true
@@ -149,8 +130,6 @@ jobs:
             ${{ env.CHANGES_SUMMARY }}
 
             Перегляньте деталі:
-            - Монітор: https://github.com/IvanDutsak/pnu-schedule-monitor
-            - Сайт: https://github.com/IvanDutsak/student-pnu-web.github.io (або твій URL)
-
-            Повний лог запуску доступний в GitHub Actions.
+            - Монітор: https://github.com/DutsakIvan/pnu-schedule-monitor
+            - Сайт: https://github.com/IvanDutsak/student-pnu-web.github.io
           priority: high

@@ -4,7 +4,15 @@ import json
 import re
 # import os # Не використовується
 
-# Функція parse_lesson_lines залишається БЕЗ ЗМІН з версії, де group повертає повну специфікацію
+# Допоміжна функція: чи рядки містять лише метадані (дист. тощо), а не предмет
+def is_only_metadata(lines):
+    """Перевіряє, чи рядки містять лише метадані без назви предмета."""
+    for line in lines:
+        stripped = line.strip().lower()
+        if stripped and stripped not in ('дист.', 'дистанційно', 'дист'):
+            return False
+    return True
+
 def parse_lesson_lines(lesson_lines, group_name):
     """Обробляє список рядків одного заняття і повертає словник із даними."""
     subject_lines = []
@@ -19,19 +27,19 @@ def parse_lesson_lines(lesson_lines, group_name):
 
     # Знаходимо викладача та розділяємо subject і details
     for i, line in enumerate(lesson_lines):
-        if i > 0 and re.fullmatch(r'[А-ЯІЇЄҐ][а-яіїєґ\']+\s+[А-ЯІЇЄҐ]\.\s*[А-ЯІЇЄҐ]\.', line.strip()):
+        if i > 0 and re.fullmatch(r'[А-ЯІЇЄҐ][а-яіїєґ\'`\'\u2019]+\s+[А-ЯІЇЄҐ]\.\s*[А-ЯІЇЄҐ]\.', line.strip()):
             teacher = line.strip()
             teacher_line_index = i
             break
-        elif i > 0 and re.fullmatch(r'[А-ЯІЇЄҐ][А-Яа-яІіЇїЄєҐґ\.\s\-\']{3,}', line.strip()):
+        elif i > 0 and re.fullmatch(r'[А-ЯІЇЄҐ][А-Яа-яІіЇїЄєҐґ\.\s\-\'`\'\u2019]{3,}', line.strip()):
              is_likely_teacher = True
              if i + 1 < len(lesson_lines):
                  next_line = lesson_lines[i+1].strip()
                  if next_line.startswith('ауд.') or next_line.startswith('кор.') or next_line.lower().startswith('дист'):
                       pass
-                 elif re.fullmatch(r'[А-ЯІЇЄҐ][а-яіїєґ\']+\s+[А-ЯІЇЄҐ]\.\s*[А-ЯІЇЄҐ]\.', next_line):
+                 elif re.fullmatch(r'[А-ЯІЇЄҐ][а-яіїєґ\'`\'\u2019]+\s+[А-ЯІЇЄҐ]\.\s*[А-ЯІЇЄҐ]\.', next_line):
                       is_likely_teacher = False
-                 elif re.fullmatch(r'[А-ЯІЇЄҐ][А-Яа-яІіЇїЄєҐґ\.\s\-\']{3,}', next_line):
+                 elif re.fullmatch(r'[А-ЯІЇЄҐ][А-Яа-яІіЇїЄєҐґ\.\s\-\'`\'\u2019]{3,}', next_line):
                       is_likely_teacher = False
 
              if is_likely_teacher:
@@ -41,7 +49,7 @@ def parse_lesson_lines(lesson_lines, group_name):
 
     if not teacher:
         for i, line in enumerate(lesson_lines):
-             if i > 0 and i < len(lesson_lines) -1 and re.fullmatch(r'[А-Яа-яІіЇїЄєҐґ\.\s\-\']+', line.strip()) \
+             if i > 0 and i < len(lesson_lines) -1 and re.fullmatch(r'[А-Яа-яІіЇїЄєҐґ\.\s\-\'`\'\u2019]+', line.strip()) \
                 and not line.strip().startswith(('ауд.', 'кор.', 'дист.', 'http', '(')) and len(line.strip()) > 5:
                  next_line = lesson_lines[i+1].strip()
                  if next_line.startswith(('ауд.', 'кор.', 'дист.', 'http')):
@@ -51,8 +59,8 @@ def parse_lesson_lines(lesson_lines, group_name):
 
     if not teacher and lesson_lines:
         last_line = lesson_lines[-1].strip()
-        if re.fullmatch(r'[А-ЯІЇЄҐ][А-Яа-яІіЇїЄєҐґ\.\s\-\']{3,}', last_line) and not last_line.startswith(('ауд.', 'кор.', 'дист.', 'http')):
-             if len(lesson_lines) > 1 and not re.fullmatch(r'[А-ЯІЇЄҐ][А-Яа-яІіЇїЄєҐґ\.\s\-\']{3,}', lesson_lines[-2].strip()):
+        if re.fullmatch(r'[А-ЯІЇЄҐ][А-Яа-яІіЇїЄєҐґ\.\s\-\'`\'\u2019]{3,}', last_line) and not last_line.startswith(('ауд.', 'кор.', 'дист.', 'http')):
+             if len(lesson_lines) > 1 and not re.fullmatch(r'[А-ЯІЇЄҐ][А-Яа-яІіЇїЄєҐґ\.\s\-\'`\'\u2019]{3,}', lesson_lines[-2].strip()):
                  teacher = last_line
                  teacher_line_index = len(lesson_lines) - 1
 
@@ -143,10 +151,10 @@ def parse_lesson_lines(lesson_lines, group_name):
         group = group_name
 
     return {
-        "subject": subject.strip(),
-        "teacher": teacher.strip(),
-        "group": group.strip(), # Повертаємо повну специфікацію
-        "details": details.strip(),
+        "subject": subject.replace('\xa0', ' ').strip(),
+        "teacher": teacher.replace('\xa0', ' ').strip(),
+        "group": group.replace('\xa0', ' ').strip(), # Повертаємо повну специфікацію
+        "details": details.replace('\xa0', ' ').strip(),
         "link": ""
     }
 
@@ -162,7 +170,7 @@ def is_new_lesson_start(line):
 
 # --- ЗМІНИ В ЦІЙ ФУНКЦІЇ ---
 def parse_schedule_html_to_json(html_content):
-    soup = BeautifulSoup(html_content, 'html.parser')
+    soup = BeautifulSoup(html_content, 'lxml')
 
     group_name = "Невідома група"
     date_range = ""
@@ -207,9 +215,8 @@ def parse_schedule_html_to_json(html_content):
 
         day_schedule = { "date": day_date, "day": day_name, "lessons": [] }
 
-        table = day_block.find('table', class_='table')
-        if table:
-            lesson_rows = table.find('tbody').find_all('tr')
+        lesson_rows = day_block.find_all('tr')
+        if lesson_rows:
             for row in lesson_rows:
                 cells = row.find_all('td')
                 if len(cells) == 3:
@@ -222,11 +229,21 @@ def parse_schedule_html_to_json(html_content):
                         a_tag = link_div.find('a');
                         if a_tag and 'href' in a_tag.attrs: link = a_tag['href']
                         link_div.decompose()
+                    # Видаляємо <img> та <span class="remote_work"> перед витяганням тексту
+                    for img_tag in lesson_info_cell.find_all('img'):
+                        img_tag.decompose()
+                    for remote_span in lesson_info_cell.find_all('span', class_='remote_work'):
+                        # Зберігаємо текст ("дист."), але видаляємо тег
+                        remote_span.replace_with(remote_span.get_text())
                     raw_lines = [line.strip() for line in lesson_info_cell.stripped_strings if line.strip()]
                     lessons_in_cell_lines = []; current_lesson_lines = []
                     for line in raw_lines:
-                        if is_new_lesson_start(line) and current_lesson_lines: lessons_in_cell_lines.append(current_lesson_lines); current_lesson_lines = [line]
-                        else: current_lesson_lines.append(line)
+                        # Не розділяємо, якщо попередні рядки — лише метадані ("дист.")
+                        if is_new_lesson_start(line) and current_lesson_lines and not is_only_metadata(current_lesson_lines):
+                            lessons_in_cell_lines.append(current_lesson_lines)
+                            current_lesson_lines = [line]
+                        else:
+                            current_lesson_lines.append(line)
                     if current_lesson_lines: lessons_in_cell_lines.append(current_lesson_lines)
 
                     for i, lesson_lines in enumerate(lessons_in_cell_lines):

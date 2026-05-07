@@ -80,7 +80,7 @@ jobs:
         if: steps.run_script.outputs.changes_detected == 'true'
         uses: actions/checkout@v4
         with:
-          repository: IvanDutsak/student-pnu-web.github.io
+          repository: DutsakIvan/student-pnu-web.github.io
           path: repo-b
           token: ${{ secrets.REPO_B_PAT }}
 
@@ -131,5 +131,5 @@ jobs:
 
             Перегляньте деталі:
             - Монітор: https://github.com/DutsakIvan/pnu-schedule-monitor
-            - Сайт: https://github.com/IvanDutsak/student-pnu-web.github.io
+            - Сайт: https://github.com/DutsakIvan/student-pnu-web.github.io
           priority: high

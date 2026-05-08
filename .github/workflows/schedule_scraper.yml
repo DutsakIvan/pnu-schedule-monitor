@@ -61,6 +61,13 @@ jobs:
           echo "CHANGES_SUMMARY<<EOF" >> $GITHUB_ENV
           echo "$SUMMARY" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
+
+          # Витягуємо детальний огляд змін
+          DETAIL=$(sed -n '/--- EMAIL_DETAIL_START ---/,/--- EMAIL_DETAIL_END ---/p' run_output.log | sed '1d;$d' | head -c 3000)
+          echo "EMAIL_DETAIL<<EOF" >> $GITHUB_ENV
+          echo "$DETAIL" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
           echo "Change summary extracted."
         shell: bash
 
@@ -69,7 +76,7 @@ jobs:
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "Автоматичне оновлення розкладу (pnu-schedule-monitor)"
-          file_pattern: schedule_data.js
+          file_pattern: schedule_data.js schedule_changes.json
           commit_user_name: GitHub Actions Bot
           commit_user_email: actions@github.com
           commit_author: GitHub Actions Bot <actions@github.com>
@@ -84,11 +91,13 @@ jobs:
           path: repo-b
           token: ${{ secrets.REPO_B_PAT }}
 
-      - name: Copy schedule_data.js to repo-b
+      - name: Copy files to repo-b
         if: steps.run_script.outputs.changes_detected == 'true'
         run: |
           echo "Copying schedule_data.js to repo-b..."
           cp ./schedule_data.js ./repo-b/schedule_data.js
+          echo "Copying schedule_changes.json to repo-b..."
+          cp ./schedule_changes.json ./repo-b/schedule_changes.json
           echo "Copy complete."
         shell: bash
 
@@ -98,12 +107,12 @@ jobs:
           cd repo-b
           git config user.name 'GitHub Actions Bot'
           git config user.email 'actions@github.com'
-          git add schedule_data.js
+          git add schedule_data.js schedule_changes.json
           if git diff --staged --quiet; then
             echo "No actual changes in schedule_data.js. Skipping commit."
           else
             echo "Changes detected. Committing..."
-            git commit -m "Автоматичне оновлення schedule_data.js [skip ci]"
+            git commit -m "Автоматичне оновлення schedule_data.js + schedule_changes.json [skip ci]"
             git push origin main
             echo "Push to student-pnu-web.github.io complete."
           fi
@@ -120,16 +129,24 @@ jobs:
           secure: true
           username: ${{ secrets.MAIL_USERNAME }}
           password: ${{ secrets.MAIL_PASSWORD }}
-          subject: "Зміни в розкладі ПНУ!"
+          subject: "📋 Зміни в розкладі ПНУ!"
           to: clainygameryt@gmail.com
           from: GitHub Actions Bot <${{ secrets.MAIL_USERNAME }}>
           body: |
-            Виявлено зміни в розкладі ПНУ!
+            📋 Виявлено зміни в розкладі ПНУ!
 
-            Зміни:
-            ${{ env.CHANGES_SUMMARY }}
+            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            📊 Детальний огляд змін:
+            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-            Перегляньте деталі:
-            - Монітор: https://github.com/DutsakIvan/pnu-schedule-monitor
-            - Сайт: https://github.com/DutsakIvan/student-pnu-web.github.io
+            ${{ env.EMAIL_DETAIL }}
+
+            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            🔗 Переглянути детально (було ↔ стало):
+            https://dutsakivan.github.io/student-pnu-web.github.io/schedule-changes.html
+
+            📅 Розклад на сайті:
+            https://dutsakivan.github.io/student-pnu-web.github.io/schedule_new.html
+
+            ⏰ Час перевірки: ${{ env.EMAIL_DETAIL && '' }}$(date '+%Y-%m-%d %H:%M:%S UTC')
           priority: high

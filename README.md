@@ -15,7 +15,6 @@
 
 - **Python 3.10** + `requests` + `BeautifulSoup4` + `lxml`
 - **GitHub Actions** для автоматизації
-- Без Selenium — працює швидко через HTTP-запити
 
 ## Секрети (GitHub Secrets)
 
